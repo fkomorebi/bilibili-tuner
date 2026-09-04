@@ -36,7 +36,7 @@
       </article>
       <article class="card result-card">
         <div class="card-title"><h2>结果与校对</h2></div>
-        <p>完成后会输出单独的 guitar.wav、MIDI 和音符事件 CSV。可在下方查看由音符事件自动排出的 TAB 草稿。</p>
+        <p>完成后会输出单独的 guitar.wav、MIDI 和音符事件 CSV。可在下方查看由音符事件自动量化、排版的 TAB 草稿。</p>
         <button id="open-output-button" class="secondary" disabled>打开结果文件夹</button>
         <button id="show-tab-button" class="secondary" disabled>查看 TAB 草稿</button>
         <div class="loop-tip"><b>建议工作流</b><span>在音频编辑器中循环疑难小节，使用分离的吉他轨对照 MIDI 修正节奏、推弦和和弦。</span></div>
@@ -54,12 +54,13 @@
   </main>
   <dialog id="tab-dialog" class="tab-dialog">
     <div class="tab-dialog-header">
-      <div><p class="eyebrow">AUTOMATIC GUITAR TAB</p><h2>TAB 草稿</h2></div>
+      <div><p class="eyebrow">AUTOMATIC GUITAR TAB · ALPHATAB</p><h2>TAB 草稿</h2></div>
       <button id="close-tab-button" class="secondary">关闭</button>
     </div>
     <p id="tab-description" class="tab-description"></p>
     <div id="tab-score" class="tab-score" aria-live="polite"></div>
   </dialog>
+  <script src="../../node_modules/@coderline/alphatab/dist/alphaTab.min.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

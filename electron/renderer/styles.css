@@ -32,8 +32,7 @@ button { border: 0; border-radius: 8px; padding: 11px 15px; color: white; font: 
 .tab-dialog::backdrop { background: rgba(4, 5, 8, .75); backdrop-filter: blur(3px); }
 .tab-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; } .tab-dialog-header .eyebrow { margin-bottom: 5px; }
 .tab-description { margin: 18px 0; color: #b6b9c3; font-size: 13px; line-height: 1.7; }
-.tab-score { display: grid; gap: 20px; min-width: 620px; padding: 4px 0 12px; font: 14px/1 ui-monospace, Consolas, monospace; overflow-x: auto; }
-.tab-system { padding: 13px; border: 1px solid #353845; border-radius: 9px; background: #121319; } .tab-time { margin: 0 0 9px 25px; color: #9fa4b4; font: 11px/1.2 Inter, "Microsoft YaHei", sans-serif; }
-.tab-grid { display: grid; align-items: stretch; } .tab-string-name, .tab-cell { display: grid; place-items: center; min-height: 28px; border-bottom: 1px solid #777b88; }
-.tab-string-name { color: #c7cbd7; border-bottom-color: transparent; font-weight: 700; } .tab-cell { color: #838897; } .tab-cell.has-note { position: relative; z-index: 1; color: #fff; font-weight: 700; background: #8f4a9d; border-radius: 4px; border-bottom-color: #8f4a9d; }
+.tab-score { min-height: 96px; overflow-x: auto; border: 1px solid #dadce5; border-radius: 9px; padding: 8px; background: #fff; color: #191b22; }
+.tab-score svg { display: block; min-width: 100%; }
+.tab-score .tab-message { display: grid; min-height: 78px; place-items: center; color: #5d6270; font-size: 13px; text-align: center; }
 @media (max-width: 720px) { header, main { width: min(100% - 28px, 1040px); } header { min-height: 110px; } .grid { grid-template-columns: 1fr; } .workflow { gap: 8px; padding: 16px; } .workflow i { margin: 0 8px; } .step span { display: none; } .option-row, .history-item { align-items: stretch; flex-direction: column; } .select-label { width: 100%; } }

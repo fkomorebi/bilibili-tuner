@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@coderline/alphatab':
+        specifier: ^1.8.4
+        version: 1.8.4
     devDependencies:
       electron:
         specifier: ^37.2.6
@@ -16,6 +20,10 @@ importers:
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
 
 packages:
+
+  '@coderline/alphatab@1.8.4':
+    resolution: {integrity: sha512-VN5rfTZZWgA63Ny1aDKCp02k3Qm9CHhg4Q9AnK0kHm7G+fNDNZo36TeToPDFoJ6VpB9+AHcCrHwHFUP1tKqdsw==}
+    engines: {node: '>=6.0.0'}
 
   '@electron/asar@3.2.1':
     resolution: {integrity: sha512-hE2cQMZ5+4o7+6T2lUaVbxIzrOjZZfX7dB02xuapyYFJZEAiWTelq6J3mMoxzd0iONDvYLPVKecB5tyjIoVDVA==}
@@ -1122,6 +1130,8 @@ packages:
     engines: {node: '>=10'}
 
 snapshots:
+
+  '@coderline/alphatab@1.8.4': {}
 
   '@electron/asar@3.2.1':
     dependencies:

@@ -3,6 +3,7 @@ let selectedAudio = '';
 let activeJobId = '';
 let outputPath = '';
 let notesPath = '';
+let alphaTabApi = null;
 const ui = {
   audioPath: $('#audio-path'), choose: $('#choose-button'), start: $('#start-button'),
   device: $('#device'), engine: $('#engine-button'), python: $('#python-path'),
@@ -76,71 +77,150 @@ function parseCsv(text) {
   }).filter(note => Number.isFinite(note.start) && Number.isFinite(note.end) && Number.isFinite(note.midi));
 }
 
-// Standard guitar tuning, low E to high E. Prefer the highest playable string so
-// the generated tab stays close to conventional hand positions.
-function toFret(note) {
-  const tuning = [40, 45, 50, 55, 59, 64];
-  for (let string = tuning.length - 1; string >= 0; string -= 1) {
-    const fret = note.midi - tuning[string];
-    if (fret >= 0 && fret <= 24) return { ...note, string, fret };
+const GUITAR_TUNING = [40, 45, 50, 55, 59, 64]; // low E to high E
+const QUANTUM_SECONDS = 0.125; // 120 BPM 的十六分音符，保持 CSV 的秒级时间轴。
+
+function candidatesForNote(note) {
+  const preferredString = Math.max(0, Math.min(5, Math.round((note.midi - 40) / 5)));
+  return GUITAR_TUNING.map((openMidi, string) => ({ string, fret: note.midi - openMidi }))
+    .filter(position => position.fret >= 0 && position.fret <= 24)
+    .sort((a, b) => (
+      Math.abs(a.string - preferredString) * 4 + a.fret * 0.3
+      - Math.abs(b.string - preferredString) * 4 - b.fret * 0.3
+    ));
+}
+
+// Resolve a chord as a small assignment problem: one note per string, preferring
+// normal playing positions around the string where that pitch is usually found.
+function assignFrets(notes) {
+  const candidates = notes.map(note => ({ note, positions: candidatesForNote(note) }));
+  let best = [];
+  let bestCost = Infinity;
+  function visit(index, usedStrings, assigned, cost) {
+    if (cost >= bestCost) return;
+    if (index === candidates.length) {
+      best = assigned;
+      bestCost = cost;
+      return;
+    }
+    const item = candidates[index];
+    for (const position of item.positions) {
+      if (usedStrings.has(position.string)) continue;
+      const nextUsed = new Set(usedStrings);
+      nextUsed.add(position.string);
+      visit(index + 1, nextUsed, [...assigned, { ...item.note, ...position }], cost + item.positions.indexOf(position));
+    }
+    // Basic Pitch can occasionally report more than six simultaneous pitches.
+    // Keeping the best playable subset is more useful than dropping that whole onset.
+    visit(index + 1, usedStrings, assigned, cost + 100);
   }
-  return null;
+  visit(0, new Set(), [], 0);
+  return best;
 }
 
-function formatTime(seconds) {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
-}
-
-function buildTab(notes) {
-  const playable = notes.map(toFret).filter(Boolean).sort((a, b) => a.start - b.start || a.string - b.string);
-  if (!playable.length) return { systems: [], skipped: notes.length };
+function groupOnsets(notes) {
   const groups = [];
-  for (const note of playable) {
-    const group = groups.findLast(item => Math.abs(item.start - note.start) < 0.04);
-    if (group) group.notes.push(note);
+  for (const note of [...notes].sort((a, b) => a.start - b.start || a.midi - b.midi)) {
+    const previous = groups.at(-1);
+    if (previous && note.start - previous.start < 0.045) previous.notes.push(note);
     else groups.push({ start: note.start, notes: [note] });
   }
-  const systems = [];
-  for (let index = 0; index < groups.length; index += 16) systems.push(groups.slice(index, index + 16));
-  return { systems, skipped: notes.length - playable.length };
+  return groups;
+}
+
+function buildAlphaTex(notes) {
+  const onsetGroups = groupOnsets(notes);
+  if (!onsetGroups.length) return { tex: '', displayed: 0, skipped: 0, tempo: 120 };
+  const origin = onsetGroups[0].start;
+  const timeline = new Map();
+  let skipped = 0;
+  let displayed = 0;
+  for (const group of onsetGroups) {
+    const step = Math.max(0, Math.round((group.start - origin) / QUANTUM_SECONDS));
+    const merged = timeline.get(step) || [];
+    timeline.set(step, merged.concat(group.notes));
+  }
+  for (const [step, groupedNotes] of timeline) {
+    const assigned = assignFrets(groupedNotes);
+    skipped += groupedNotes.length - assigned.length;
+    displayed += assigned.length;
+    timeline.set(step, assigned);
+  }
+  if (!displayed) return { tex: '', displayed, skipped: notes.length, tempo: 120 };
+
+  const lastStep = Math.max(...timeline.keys());
+  const beats = [];
+  for (let step = 0; step <= lastStep; step += 1) {
+    const chord = timeline.get(step);
+    if (!chord || !chord.length) beats.push('r');
+    else {
+      // alphaTex string 1 is the high E string, while our tuning array is low-to-high.
+      const values = chord.map(note => `${note.fret}.${6 - note.string}`);
+      beats.push(values.length === 1 ? values[0] : `(${values.join(' ')})`);
+    }
+  }
+  while (beats.length % 16) beats.push('r'); // complete the final 4/4 bar.
+  const bars = [];
+  for (let index = 0; index < beats.length; index += 16) bars.push(beats.slice(index, index + 16).join(' '));
+  return {
+    tex: [
+      '\\title "自动 TAB 草稿"',
+      '\\subtitle "从转录音符自动量化；请人工校对"',
+      '\\tempo 120',
+      '\\ts 4 4',
+      '\\tuning (E4 B3 G3 D3 A2 E2) { label "Standard" }',
+      '.',
+      `:16 ${bars.join(' | ')}`
+    ].join('\n'),
+    displayed,
+    skipped,
+    tempo: 120
+  };
+}
+
+function clearAlphaTab() {
+  if (alphaTabApi) alphaTabApi.destroy();
+  alphaTabApi = null;
+  ui.tabScore.replaceChildren();
+}
+
+function showTabMessage(message) {
+  clearAlphaTab();
+  const messageElement = document.createElement('p');
+  messageElement.className = 'tab-message';
+  messageElement.textContent = message;
+  ui.tabScore.append(messageElement);
 }
 
 function renderTab(notes) {
-  const { systems, skipped } = buildTab(notes);
-  ui.tabScore.replaceChildren();
-  if (!systems.length) {
-    ui.tabScore.textContent = '没有可显示的吉他音符。请检查此次转录生成的 CSV。';
+  const score = buildAlphaTex(notes);
+  if (!score.tex) {
+    showTabMessage('没有可显示的标准吉他音符。请检查此次转录生成的 CSV。');
     return;
   }
-  const names = ['E', 'A', 'D', 'G', 'B', 'e'];
-  for (const system of systems) {
-    const section = document.createElement('section');
-    section.className = 'tab-system';
-    const time = document.createElement('div');
-    time.className = 'tab-time';
-    time.textContent = `${formatTime(system[0].start)} – ${formatTime(system.at(-1).start)}`;
-    const grid = document.createElement('div');
-    grid.className = 'tab-grid';
-    grid.style.gridTemplateColumns = `24px repeat(${system.length}, minmax(32px, 1fr))`;
-    for (let string = 5; string >= 0; string -= 1) {
-      const label = document.createElement('span');
-      label.className = 'tab-string-name';
-      label.textContent = names[string];
-      grid.append(label);
-      for (const group of system) {
-        const cell = document.createElement('span');
-        cell.className = 'tab-cell';
-        const frets = group.notes.filter(note => note.string === string).map(note => note.fret).join('/');
-        cell.textContent = frets || '—';
-        if (frets) cell.classList.add('has-note');
-        grid.append(cell);
-      }
-    }
-    section.append(time, grid);
-    ui.tabScore.append(section);
+  if (!window.alphaTab) {
+    showTabMessage('alphaTab 资源未能加载，无法渲染 TAB。');
+    return;
   }
-  ui.tabDescription.textContent = `共 ${notes.length} 个识别音符；每列为同时起音的音符，时间从 CSV 读取。${skipped ? ` ${skipped} 个超出 24 品标准吉他音域的音符未显示。` : ''} 请结合 MIDI 与分离吉他轨校对弦位、节奏和推弦。`;
+  clearAlphaTab();
+  try {
+    const assets = new URL('../../node_modules/@coderline/alphatab/dist/', window.location.href).href;
+    alphaTabApi = new window.alphaTab.AlphaTabApi(ui.tabScore, {
+      core: {
+        engine: 'svg',
+        useWorkers: false,
+        enableLazyLoading: false,
+        scriptFile: `${assets}alphaTab.min.js`,
+        fontDirectory: `${assets}font/`
+      },
+      display: { scale: 0.9, barsPerRow: 4 }
+    });
+    alphaTabApi.error.on(error => showTabMessage(`无法渲染 TAB：${error.message}`));
+    alphaTabApi.tex(score.tex);
+    ui.tabDescription.textContent = `已用 alphaTab 排版 ${score.displayed} 个音符（120 BPM、4/4、十六分音符量化）。${score.skipped ? ` ${score.skipped} 个音符因超出 24 品范围或同一时刻弦位冲突而未显示。` : ''} 节奏和指法均为自动推断，请结合分离吉他轨与 MIDI 校对。`;
+  } catch (error) {
+    showTabMessage(`无法初始化 alphaTab：${error.message}`);
+  }
 }
 
 async function openTab(notesFile, description) {

@@ -20,5 +20,8 @@
     "asarUnpack": ["backend/**"],
     "files": ["electron/**", "backend/**", "package.json", "README.md"],
     "win": { "target": "nsis" }
+  },
+  "dependencies": {
+    "@coderline/alphatab": "^1.8.4"
   }
 }
