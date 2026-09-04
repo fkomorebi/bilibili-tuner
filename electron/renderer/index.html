@@ -55,9 +55,26 @@
   <dialog id="tab-dialog" class="tab-dialog">
     <div class="tab-dialog-header">
       <div><p class="eyebrow">AUTOMATIC GUITAR TAB · ALPHATAB</p><h2>TAB 草稿</h2></div>
-      <button id="close-tab-button" class="secondary">关闭</button>
+      <div class="tab-dialog-actions">
+        <button id="tab-fullscreen-button" class="secondary">全屏</button>
+        <button id="close-tab-button" class="secondary">关闭</button>
+      </div>
     </div>
     <p id="tab-description" class="tab-description"></p>
+    <div class="tab-player" aria-label="TAB 播放控制">
+      <button id="tab-play-button" class="primary" disabled>载入音色中…</button>
+      <button id="tab-restart-button" class="secondary" disabled>从头播放</button>
+      <label class="tab-loop"><input id="tab-loop-input" type="checkbox"> 循环播放</label>
+      <label class="tab-speed">速度
+        <select id="tab-speed-select" disabled>
+          <option value="0.5">50%</option>
+          <option value="0.75">75%</option>
+          <option value="1" selected>100%</option>
+          <option value="1.25">125%</option>
+        </select>
+      </label>
+      <span id="tab-player-status" class="tab-player-status" role="status">等待 TAB 载入</span>
+    </div>
     <div id="tab-score" class="tab-score" aria-live="polite"></div>
   </dialog>
   <script src="../../node_modules/@coderline/alphatab/dist/alphaTab.min.js"></script>

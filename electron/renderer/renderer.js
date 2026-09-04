@@ -9,8 +9,10 @@ const ui = {
   device: $('#device'), engine: $('#engine-button'), python: $('#python-path'),
   saveSettings: $('#save-settings'), status: $('#status-text'), pill: $('#status-pill'),
   progress: $('#progress-bar'), log: $('#log'), cancel: $('#cancel-button'), openOutput: $('#open-output-button'),
-  showTab: $('#show-tab-button'), tabDialog: $('#tab-dialog'), closeTab: $('#close-tab-button'),
+  showTab: $('#show-tab-button'), tabDialog: $('#tab-dialog'), closeTab: $('#close-tab-button'), tabFullscreen: $('#tab-fullscreen-button'),
   tabScore: $('#tab-score'), tabDescription: $('#tab-description'),
+  tabPlay: $('#tab-play-button'), tabRestart: $('#tab-restart-button'), tabLoop: $('#tab-loop-input'),
+  tabSpeed: $('#tab-speed-select'), tabPlayerStatus: $('#tab-player-status'),
   history: $('#history-list'), refreshHistory: $('#refresh-history-button')
 };
 
@@ -69,6 +71,36 @@ ui.closeTab.addEventListener('click', () => ui.tabDialog.close());
 ui.tabDialog.addEventListener('click', event => {
   if (event.target === ui.tabDialog) ui.tabDialog.close();
 });
+ui.tabDialog.addEventListener('close', () => {
+  if (alphaTabApi) alphaTabApi.pause();
+  if (document.fullscreenElement === ui.tabDialog) document.exitFullscreen();
+  ui.tabDialog.classList.remove('tab-dialog-fullscreen');
+  updateTabFullscreenButton();
+});
+
+function updateTabFullscreenButton() {
+  const fullscreen = document.fullscreenElement === ui.tabDialog || ui.tabDialog.classList.contains('tab-dialog-fullscreen');
+  ui.tabFullscreen.textContent = fullscreen ? '退出全屏' : '全屏';
+}
+
+ui.tabFullscreen.addEventListener('click', async () => {
+  if (document.fullscreenElement === ui.tabDialog) {
+    await document.exitFullscreen();
+    return;
+  }
+  if (ui.tabDialog.classList.contains('tab-dialog-fullscreen')) {
+    ui.tabDialog.classList.remove('tab-dialog-fullscreen');
+    updateTabFullscreenButton();
+    return;
+  }
+  try {
+    await ui.tabDialog.requestFullscreen();
+  } catch {
+    ui.tabDialog.classList.add('tab-dialog-fullscreen');
+    updateTabFullscreenButton();
+  }
+});
+document.addEventListener('fullscreenchange', updateTabFullscreenButton);
 
 function parseCsv(text) {
   return text.trim().split(/\r?\n/).slice(1).map(line => {
@@ -178,9 +210,30 @@ function buildAlphaTex(notes) {
   };
 }
 
+function setTabPlayerStatus(message) {
+  ui.tabPlayerStatus.textContent = message;
+}
+
+function setTabPlayerControls(enabled) {
+  ui.tabPlay.disabled = !enabled;
+  ui.tabRestart.disabled = !enabled;
+  ui.tabSpeed.disabled = !enabled;
+  ui.tabLoop.disabled = !enabled;
+  if (!enabled) ui.tabPlay.textContent = '载入音色中…';
+}
+
+function updateTabPlayButton(isPlaying) {
+  ui.tabPlay.textContent = isPlaying ? '暂停' : '播放';
+}
+
 function clearAlphaTab() {
-  if (alphaTabApi) alphaTabApi.destroy();
+  if (alphaTabApi) {
+    alphaTabApi.pause();
+    alphaTabApi.destroy();
+  }
   alphaTabApi = null;
+  setTabPlayerControls(false);
+  setTabPlayerStatus('等待 TAB 载入');
   ui.tabScore.replaceChildren();
 }
 
@@ -191,6 +244,26 @@ function showTabMessage(message) {
   messageElement.textContent = message;
   ui.tabScore.append(messageElement);
 }
+
+function isAlphaTabPlaying(state) {
+  return state === (window.alphaTab.PlayerState?.Playing ?? 1);
+}
+
+ui.tabPlay.addEventListener('click', () => {
+  if (!alphaTabApi) return;
+  alphaTabApi.playPause();
+});
+ui.tabRestart.addEventListener('click', () => {
+  if (!alphaTabApi) return;
+  alphaTabApi.stop();
+  alphaTabApi.play();
+});
+ui.tabLoop.addEventListener('change', () => {
+  if (alphaTabApi) alphaTabApi.isLooping = ui.tabLoop.checked;
+});
+ui.tabSpeed.addEventListener('change', () => {
+  if (alphaTabApi) alphaTabApi.playbackSpeed = Number(ui.tabSpeed.value);
+});
 
 function renderTab(notes) {
   const score = buildAlphaTex(notes);
@@ -213,10 +286,40 @@ function renderTab(notes) {
         scriptFile: `${assets}alphaTab.min.js`,
         fontDirectory: `${assets}font/`
       },
-      display: { scale: 0.9, barsPerRow: 4 }
+      display: { scale: 1.2, barsPerRow: 4 },
+      player: {
+        enablePlayer: true,
+        playerMode: 'EnabledSynthesizer',
+        soundFont: `${assets}soundfont/sonivox.sf3`,
+        scrollElement: ui.tabScore,
+        enableCursor: true,
+        enableElementHighlighting: true,
+        enableUserInteraction: true
+      }
     });
-    alphaTabApi.error.on(error => showTabMessage(`无法渲染 TAB：${error.message}`));
-    alphaTabApi.tex(score.tex);
+    const api = alphaTabApi;
+    setTabPlayerStatus('正在载入音色…');
+    api.error.on(error => {
+      if (alphaTabApi === api) showTabMessage(`无法载入 TAB 或播放器：${error.message}`);
+    });
+    api.playerReady.on(() => {
+      if (alphaTabApi !== api) return;
+      api.isLooping = ui.tabLoop.checked;
+      api.playbackSpeed = Number(ui.tabSpeed.value);
+      setTabPlayerControls(true);
+      updateTabPlayButton(false);
+      setTabPlayerStatus('已就绪，点击播放试听自动生成的 TAB。');
+    });
+    api.playerStateChanged.on(event => {
+      if (alphaTabApi !== api) return;
+      const playing = isAlphaTabPlaying(event.state);
+      updateTabPlayButton(playing);
+      setTabPlayerStatus(playing ? '正在播放（谱面会跟随高亮）。' : '已暂停。');
+    });
+    api.playerFinished.on(() => {
+      if (alphaTabApi === api && !api.isLooping) setTabPlayerStatus('播放结束。');
+    });
+    api.tex(score.tex);
     ui.tabDescription.textContent = `已用 alphaTab 排版 ${score.displayed} 个音符（120 BPM、4/4、十六分音符量化）。${score.skipped ? ` ${score.skipped} 个音符因超出 24 品范围或同一时刻弦位冲突而未显示。` : ''} 节奏和指法均为自动推断，请结合分离吉他轨与 MIDI 校对。`;
   } catch (error) {
     showTabMessage(`无法初始化 alphaTab：${error.message}`);

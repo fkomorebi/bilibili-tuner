@@ -18,7 +18,7 @@
     "appId": "com.fkomo.guitar-transcription-workbench",
     "productName": "吉他扒谱助手",
     "asarUnpack": ["backend/**"],
-    "files": ["electron/**", "backend/**", "package.json", "README.md"],
+    "files": ["electron/**", "backend/**", "node_modules/@coderline/alphatab/dist/**", "package.json", "README.md"],
     "win": { "target": "nsis" }
   },
   "dependencies": {
