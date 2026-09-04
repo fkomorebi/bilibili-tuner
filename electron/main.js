@@ -15,6 +15,10 @@ function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
+function historyPath() {
+  return path.join(app.getPath('userData'), 'task-history.json');
+}
+
 function loadSettings() {
   try {
     return JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
@@ -25,6 +29,26 @@ function loadSettings() {
 
 function saveSettings(settings) {
   fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2), 'utf8');
+}
+
+function loadHistory() {
+  try {
+    const history = JSON.parse(fs.readFileSync(historyPath(), 'utf8'));
+    return Array.isArray(history) ? history : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(history) {
+  fs.writeFileSync(historyPath(), JSON.stringify(history.slice(0, 100), null, 2), 'utf8');
+}
+
+function addHistoryEntry(entry) {
+  const history = loadHistory();
+  history.unshift(entry);
+  saveHistory(history);
+  return history;
 }
 
 function emit(channel, payload) {
@@ -38,7 +62,12 @@ function parseEvents(jobId, chunk, state) {
   for (const line of lines) {
     if (!line.trim()) continue;
     try {
-      emit('job:event', Object.assign({ jobId }, JSON.parse(line)));
+      const event = Object.assign({ jobId }, JSON.parse(line));
+      if (event.type === 'result') {
+        const job = jobs.get(jobId);
+        if (job) job.result = event;
+      }
+      emit('job:event', event);
     } catch {
       emit('job:event', { jobId, type: 'log', message: line });
     }
@@ -115,12 +144,25 @@ app.whenReady().then(() => {
       env: Object.assign({}, process.env, { PYTHONUTF8: '1' })
     });
     const state = { buffer: '' };
-    jobs.set(jobId, child);
+    jobs.set(jobId, { child, inputPath, device, outputPath, startedAt: new Date().toISOString(), result: null });
     child.stdout.on('data', data => parseEvents(jobId, data, state));
     child.stderr.on('data', data => emit('job:event', { jobId, type: 'log', message: data.toString() }));
     child.on('error', error => emit('job:event', { jobId, type: 'error', message: error.message }));
     child.on('close', code => {
       if (state.buffer.trim()) parseEvents(jobId, Buffer.from('\n'), state);
+      const job = jobs.get(jobId);
+      if (code === 0 && job && job.result && job.result.notesPath) {
+        addHistoryEntry({
+          id: jobId,
+          inputPath: job.inputPath,
+          inputName: path.basename(job.inputPath),
+          device: job.device,
+          outputPath: job.result.outputPath || job.outputPath,
+          notesPath: job.result.notesPath,
+          midiPath: job.result.midiPath || '',
+          completedAt: new Date().toISOString()
+        });
+      }
       emit('job:finished', { jobId, code, outputPath });
       jobs.delete(jobId);
     });
@@ -128,10 +170,12 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('job:cancel', (_event, jobId) => {
-    const child = jobs.get(jobId);
+    const job = jobs.get(jobId);
+    const child = job && job.child;
     if (child && !child.killed) child.kill();
     return Boolean(child);
   });
+  ipcMain.handle('history:list', () => loadHistory());
   ipcMain.handle('notes:read', (_event, notesPath) => {
     const resolvedPath = path.resolve(String(notesPath || ''));
     if (path.extname(resolvedPath).toLowerCase() !== '.csv') {

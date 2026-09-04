@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('workbench', {
   checkEngine: () => ipcRenderer.invoke('engine:check'),
   startJob: options => ipcRenderer.invoke('job:start', options),
   cancelJob: jobId => ipcRenderer.invoke('job:cancel', jobId),
+  listHistory: () => ipcRenderer.invoke('history:list'),
   readNotes: notesPath => ipcRenderer.invoke('notes:read', notesPath),
   openPath: targetPath => ipcRenderer.invoke('path:open', targetPath),
   onJobEvent: handler => ipcRenderer.on('job:event', (_event, payload) => handler(payload)),

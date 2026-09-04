@@ -9,7 +9,8 @@ const ui = {
   saveSettings: $('#save-settings'), status: $('#status-text'), pill: $('#status-pill'),
   progress: $('#progress-bar'), log: $('#log'), cancel: $('#cancel-button'), openOutput: $('#open-output-button'),
   showTab: $('#show-tab-button'), tabDialog: $('#tab-dialog'), closeTab: $('#close-tab-button'),
-  tabScore: $('#tab-score'), tabDescription: $('#tab-description')
+  tabScore: $('#tab-score'), tabDescription: $('#tab-description'),
+  history: $('#history-list'), refreshHistory: $('#refresh-history-button')
 };
 
 function setStatus(message, kind) {
@@ -142,16 +143,77 @@ function renderTab(notes) {
   ui.tabDescription.textContent = `共 ${notes.length} 个识别音符；每列为同时起音的音符，时间从 CSV 读取。${skipped ? ` ${skipped} 个超出 24 品标准吉他音域的音符未显示。` : ''} 请结合 MIDI 与分离吉他轨校对弦位、节奏和推弦。`;
 }
 
-ui.showTab.addEventListener('click', async () => {
-  if (!notesPath) return;
+async function openTab(notesFile, description) {
+  if (!notesFile) return;
   ui.tabScore.textContent = '正在载入音符事件…';
-  ui.tabDescription.textContent = '依据本次转录生成的 CSV 自动排版。';
+  ui.tabDescription.textContent = description;
   ui.tabDialog.showModal();
   try {
-    renderTab(parseCsv(await window.workbench.readNotes(notesPath)));
+    renderTab(parseCsv(await window.workbench.readNotes(notesFile)));
   } catch (error) {
     ui.tabScore.textContent = `无法读取 TAB 草稿：${error.message}`;
   }
+}
+
+function formatHistoryTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '完成时间未知' : date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function createHistoryButton(label, handler, disabled) {
+  const button = document.createElement('button');
+  button.className = 'secondary';
+  button.textContent = label;
+  button.disabled = disabled;
+  button.addEventListener('click', handler);
+  return button;
+}
+
+async function loadHistory() {
+  ui.history.replaceChildren();
+  try {
+    const history = await window.workbench.listHistory();
+    if (!history.length) {
+      const empty = document.createElement('p');
+      empty.className = 'history-empty';
+      empty.textContent = '还没有完成的任务。完成一次转录后，会自动显示在这里。';
+      ui.history.append(empty);
+      return;
+    }
+    for (const entry of history) {
+      const item = document.createElement('article');
+      item.className = 'history-item';
+      const meta = document.createElement('div');
+      meta.className = 'history-meta';
+      const name = document.createElement('div');
+      name.className = 'history-name';
+      name.textContent = entry.inputName || '未命名音频';
+      name.title = entry.inputPath || '';
+      const detail = document.createElement('div');
+      detail.className = 'history-detail';
+      detail.textContent = `${formatHistoryTime(entry.completedAt)} · ${entry.device === 'cuda' ? 'CUDA' : 'CPU'}`;
+      meta.append(name, detail);
+      const actions = document.createElement('div');
+      actions.className = 'history-actions';
+      actions.append(
+        createHistoryButton('打开 TAB', () => openTab(entry.notesPath, `正在打开历史任务：${entry.inputName || '未命名音频'}。`), !entry.notesPath),
+        createHistoryButton('打开文件夹', () => window.workbench.openPath(entry.outputPath), !entry.outputPath)
+      );
+      item.append(meta, actions);
+      ui.history.append(item);
+    }
+  } catch (error) {
+    const empty = document.createElement('p');
+    empty.className = 'history-empty';
+    empty.textContent = `无法读取任务历史：${error.message}`;
+    ui.history.append(empty);
+  }
+}
+
+ui.refreshHistory.addEventListener('click', loadHistory);
+
+ui.showTab.addEventListener('click', async () => {
+  openTab(notesPath, '依据本次转录生成的 CSV 自动排版。');
 });
 window.workbench.onJobEvent(event => {
   if (event.jobId !== activeJobId) return;
@@ -178,6 +240,7 @@ window.workbench.onJobFinished(event => {
     ui.progress.style.width = '100%';
     ui.openOutput.disabled = false;
     setStatus('处理完成。请用吉他分轨和 MIDI 草稿人工校对。', 'ready');
+    loadHistory();
   } else if (ui.pill.classList.contains('running')) {
     setStatus('任务没有完成，请查看日志。', 'error');
   }
@@ -185,4 +248,5 @@ window.workbench.onJobFinished(event => {
 (async () => {
   const settings = await window.workbench.loadSettings();
   ui.python.value = settings.pythonPath || '';
+  loadHistory();
 })();

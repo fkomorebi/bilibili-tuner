@@ -42,6 +42,10 @@
         <div class="loop-tip"><b>建议工作流</b><span>在音频编辑器中循环疑难小节，使用分离的吉他轨对照 MIDI 修正节奏、推弦和和弦。</span></div>
       </article>
     </section>
+    <section class="card history-card">
+      <div class="card-title"><div><h2>任务历史</h2><p>已完成的任务会保存在这里，重启应用后仍可打开之前的 TAB 草稿。</p></div><button id="refresh-history-button" class="secondary">刷新</button></div>
+      <div id="history-list" class="history-list" aria-live="polite"><p class="history-empty">正在读取任务历史…</p></div>
+    </section>
     <details class="settings">
       <summary>引擎设置</summary>
       <label for="python-path">Python 3.11 可执行文件（留空则使用命令行中的 python）</label>
