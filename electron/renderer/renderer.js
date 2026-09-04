@@ -2,11 +2,14 @@ const $ = selector => document.querySelector(selector);
 let selectedAudio = '';
 let activeJobId = '';
 let outputPath = '';
+let notesPath = '';
 const ui = {
   audioPath: $('#audio-path'), choose: $('#choose-button'), start: $('#start-button'),
   device: $('#device'), engine: $('#engine-button'), python: $('#python-path'),
   saveSettings: $('#save-settings'), status: $('#status-text'), pill: $('#status-pill'),
-  progress: $('#progress-bar'), log: $('#log'), cancel: $('#cancel-button'), openOutput: $('#open-output-button')
+  progress: $('#progress-bar'), log: $('#log'), cancel: $('#cancel-button'), openOutput: $('#open-output-button'),
+  showTab: $('#show-tab-button'), tabDialog: $('#tab-dialog'), closeTab: $('#close-tab-button'),
+  tabScore: $('#tab-score'), tabDescription: $('#tab-description')
 };
 
 function setStatus(message, kind) {
@@ -42,6 +45,8 @@ ui.saveSettings.addEventListener('click', async () => {
 ui.start.addEventListener('click', async () => {
   if (!selectedAudio) return;
   ui.log.textContent = '';
+  notesPath = '';
+  ui.showTab.disabled = true;
   ui.start.disabled = true;
   ui.cancel.hidden = false;
   ui.progress.style.width = '2%';
@@ -58,6 +63,96 @@ ui.start.addEventListener('click', async () => {
 });
 ui.cancel.addEventListener('click', () => { if (activeJobId) window.workbench.cancelJob(activeJobId); });
 ui.openOutput.addEventListener('click', () => { if (outputPath) window.workbench.openPath(outputPath); });
+ui.closeTab.addEventListener('click', () => ui.tabDialog.close());
+ui.tabDialog.addEventListener('click', event => {
+  if (event.target === ui.tabDialog) ui.tabDialog.close();
+});
+
+function parseCsv(text) {
+  return text.trim().split(/\r?\n/).slice(1).map(line => {
+    const fields = line.split(',').map(value => value.trim());
+    return { start: Number(fields[0]), end: Number(fields[1]), midi: Math.round(Number(fields[2])) };
+  }).filter(note => Number.isFinite(note.start) && Number.isFinite(note.end) && Number.isFinite(note.midi));
+}
+
+// Standard guitar tuning, low E to high E. Prefer the highest playable string so
+// the generated tab stays close to conventional hand positions.
+function toFret(note) {
+  const tuning = [40, 45, 50, 55, 59, 64];
+  for (let string = tuning.length - 1; string >= 0; string -= 1) {
+    const fret = note.midi - tuning[string];
+    if (fret >= 0 && fret <= 24) return { ...note, string, fret };
+  }
+  return null;
+}
+
+function formatTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
+}
+
+function buildTab(notes) {
+  const playable = notes.map(toFret).filter(Boolean).sort((a, b) => a.start - b.start || a.string - b.string);
+  if (!playable.length) return { systems: [], skipped: notes.length };
+  const groups = [];
+  for (const note of playable) {
+    const group = groups.findLast(item => Math.abs(item.start - note.start) < 0.04);
+    if (group) group.notes.push(note);
+    else groups.push({ start: note.start, notes: [note] });
+  }
+  const systems = [];
+  for (let index = 0; index < groups.length; index += 16) systems.push(groups.slice(index, index + 16));
+  return { systems, skipped: notes.length - playable.length };
+}
+
+function renderTab(notes) {
+  const { systems, skipped } = buildTab(notes);
+  ui.tabScore.replaceChildren();
+  if (!systems.length) {
+    ui.tabScore.textContent = '没有可显示的吉他音符。请检查此次转录生成的 CSV。';
+    return;
+  }
+  const names = ['E', 'A', 'D', 'G', 'B', 'e'];
+  for (const system of systems) {
+    const section = document.createElement('section');
+    section.className = 'tab-system';
+    const time = document.createElement('div');
+    time.className = 'tab-time';
+    time.textContent = `${formatTime(system[0].start)} – ${formatTime(system.at(-1).start)}`;
+    const grid = document.createElement('div');
+    grid.className = 'tab-grid';
+    grid.style.gridTemplateColumns = `24px repeat(${system.length}, minmax(32px, 1fr))`;
+    for (let string = 5; string >= 0; string -= 1) {
+      const label = document.createElement('span');
+      label.className = 'tab-string-name';
+      label.textContent = names[string];
+      grid.append(label);
+      for (const group of system) {
+        const cell = document.createElement('span');
+        cell.className = 'tab-cell';
+        const frets = group.notes.filter(note => note.string === string).map(note => note.fret).join('/');
+        cell.textContent = frets || '—';
+        if (frets) cell.classList.add('has-note');
+        grid.append(cell);
+      }
+    }
+    section.append(time, grid);
+    ui.tabScore.append(section);
+  }
+  ui.tabDescription.textContent = `共 ${notes.length} 个识别音符；每列为同时起音的音符，时间从 CSV 读取。${skipped ? ` ${skipped} 个超出 24 品标准吉他音域的音符未显示。` : ''} 请结合 MIDI 与分离吉他轨校对弦位、节奏和推弦。`;
+}
+
+ui.showTab.addEventListener('click', async () => {
+  if (!notesPath) return;
+  ui.tabScore.textContent = '正在载入音符事件…';
+  ui.tabDescription.textContent = '依据本次转录生成的 CSV 自动排版。';
+  ui.tabDialog.showModal();
+  try {
+    renderTab(parseCsv(await window.workbench.readNotes(notesPath)));
+  } catch (error) {
+    ui.tabScore.textContent = `无法读取 TAB 草稿：${error.message}`;
+  }
+});
 window.workbench.onJobEvent(event => {
   if (event.jobId !== activeJobId) return;
   if (event.type === 'progress') {
@@ -65,7 +160,9 @@ window.workbench.onJobEvent(event => {
     setStatus(event.message || '正在处理…', 'running');
   } else if (event.type === 'result') {
     outputPath = event.outputPath || outputPath;
+    notesPath = event.notesPath || notesPath;
     ui.openOutput.disabled = false;
+    ui.showTab.disabled = !notesPath;
     addLog('已生成：' + event.midiPath);
   } else if (event.type === 'error') {
     setStatus(event.message, 'error');

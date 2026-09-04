@@ -132,6 +132,14 @@ app.whenReady().then(() => {
     if (child && !child.killed) child.kill();
     return Boolean(child);
   });
+  ipcMain.handle('notes:read', (_event, notesPath) => {
+    const resolvedPath = path.resolve(String(notesPath || ''));
+    if (path.extname(resolvedPath).toLowerCase() !== '.csv') {
+      throw new Error('只能读取转录生成的音符 CSV 文件。');
+    }
+    if (!fs.existsSync(resolvedPath)) throw new Error('找不到音符事件文件。');
+    return fs.readFileSync(resolvedPath, 'utf8');
+  });
   ipcMain.handle('path:open', (_event, targetPath) => shell.openPath(targetPath));
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
