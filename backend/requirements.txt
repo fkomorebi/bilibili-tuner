@@ -1,0 +1,5 @@
+# 推荐使用 Python 3.11 创建独立虚拟环境。
+# Basic Pitch 使用的 resampy 仍会导入 pkg_resources；setuptools 81 起已移除它。
+setuptools<81
+demucs>=4.0.1
+basic-pitch>=0.4.0

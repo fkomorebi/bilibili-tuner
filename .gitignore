@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+.engine/
+.npm-cache/
+.pnpm-store/
+__pycache__/
+*.pyc
+*.log

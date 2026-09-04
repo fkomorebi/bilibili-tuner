@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>吉他扒谱助手</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div><p class="eyebrow">LOCAL TRANSCRIPTION WORKBENCH</p><h1>吉他扒谱助手</h1></div>
+    <button id="engine-button" class="secondary">检查 AI 引擎</button>
+  </header>
+  <main>
+    <section class="card workflow">
+      <div class="step"><b>01</b><span>选择本地音频</span></div><i></i>
+      <div class="step"><b>02</b><span>Demucs 吉他分轨</span></div><i></i>
+      <div class="step"><b>03</b><span>Basic Pitch 转 MIDI</span></div>
+    </section>
+    <section class="card input-card">
+      <label for="audio-path">音频文件</label>
+      <div class="file-row"><input id="audio-path" readonly placeholder="选择你有权使用的 WAV / MP3 / FLAC 文件"><button id="choose-button" class="secondary">选择文件</button></div>
+      <div class="option-row">
+        <label class="select-label">计算设备<select id="device"><option value="cpu">CPU（兼容性最好）</option><option value="cuda">NVIDIA CUDA（更快）</option></select></label>
+        <button id="start-button" class="primary" disabled>开始分轨并转录</button>
+      </div>
+      <p class="hint">所有处理在本机完成。首次运行会下载模型；长音频在 CPU 上需要数分钟。</p>
+    </section>
+    <section class="grid">
+      <article class="card status-card">
+        <div class="card-title"><h2>处理状态</h2><span id="status-pill" class="pill">待命</span></div>
+        <div class="progress-track"><div id="progress-bar"></div></div>
+        <p id="status-text">先检查 AI 引擎，然后选择音频文件。</p>
+        <pre id="log" aria-live="polite"></pre>
+        <button id="cancel-button" class="danger" hidden>取消当前任务</button>
+      </article>
+      <article class="card result-card">
+        <div class="card-title"><h2>结果与校对</h2></div>
+        <p>完成后会输出单独的 guitar.wav、MIDI 和音符事件 CSV。请以 MIDI 草稿为基础进行人工校对。</p>
+        <button id="open-output-button" class="secondary" disabled>打开结果文件夹</button>
+        <div class="loop-tip"><b>建议工作流</b><span>在音频编辑器中循环疑难小节，使用分离的吉他轨对照 MIDI 修正节奏、推弦和和弦。</span></div>
+      </article>
+    </section>
+    <details class="settings">
+      <summary>引擎设置</summary>
+      <label for="python-path">Python 3.11 可执行文件（留空则使用命令行中的 python）</label>
+      <div class="file-row"><input id="python-path" placeholder="例如 C:\\Python311\\python.exe"><button id="save-settings" class="secondary">保存</button></div>
+    </details>
+  </main>
+  <script src="renderer.js"></script>
+</body>
+</html>
